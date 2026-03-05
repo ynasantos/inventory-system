@@ -28,6 +28,13 @@ function setErr(text = "") {
   if (e) e.textContent = text;
 }
 
+function normalizeProductName(value) {
+  return String(value || "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+}
+
 async function requireAuth() {
   const { data, error } = await supabase.auth.getUser();
   if (error) console.error("getUser error:", error);
@@ -308,6 +315,7 @@ async function addProduct() {
   setMsg("");
 
   const name = (el("pName")?.value || "").trim();
+  const normalizedName = normalizeProductName(name);
   const price = Number(el("pPrice")?.value);
   const min = 50;
   const stock = Number(el("pStock")?.value || 0);
@@ -317,6 +325,21 @@ async function addProduct() {
   if (!Number.isFinite(stock) || stock < 0) return setErr("Invalid initial stock.");
 
   setMsg("Adding product…");
+
+  const { data: existingProducts, error: existingErr } = await supabase
+    .from("products")
+    .select("id,name");
+
+  if (existingErr) return setErr("Cannot validate product name: " + existingErr.message);
+
+  const hasDuplicate = (existingProducts || []).some(
+    (product) => normalizeProductName(product.name) === normalizedName
+  );
+
+  if (hasDuplicate) {
+    setMsg("");
+    return setErr("Product name already exists. Please use a different name.");
+  }
 
   const { data: prod, error: pErr } = await supabase
     .from("products")
