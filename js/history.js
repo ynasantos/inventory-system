@@ -161,6 +161,7 @@ async function loadHistory(userId, role) {
 }
 
 function openClearModal(userId, role) {
+  if (role !== "admin") return;
   clearContext = { userId, role };
   const isAdmin = role === "admin";
   const text = el("clearModalText");
@@ -178,6 +179,10 @@ function closeClearModal() {
 }
 
 async function clearHistory(userId, role) {
+  if (role !== "admin") {
+    el("note").textContent = "Only admin can clear transaction history.";
+    return;
+  }
   const isAdmin = role === "admin";
 
   el("note").textContent = "Clearing history…";
@@ -283,6 +288,10 @@ async function main() {
   el("userRole").textContent = role;
 
   applyNavByRole(role);
+
+  if (role !== "admin" && el("clearBtn")) {
+    el("clearBtn").style.display = "none";
+  }
 
   el("search")?.addEventListener("input", renderTable);
   el("clearBtn")?.addEventListener("click", () => openClearModal(user.id, role));
