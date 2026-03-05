@@ -50,11 +50,110 @@ async function getMyRole(userId) {
     console.error("getMyRole error:", error);
     return "staff";
   }
-  return data?.role || "staff";
+  return String(data?.role || "staff").trim().toLowerCase();
 }
 
 let isAdmin = false;
 let allRows = [];
+let editingProductId = null;
+let editingStockProductId = null;
+let archivingRow = null;
+
+function openEditModal(row) {
+  editingProductId = row.id;
+  if (el("editName")) el("editName").value = row.name || "";
+  if (el("editPrice")) el("editPrice").value = String(row.price ?? "");
+  el("editModal")?.classList.add("show");
+  el("editName")?.focus();
+}
+
+function closeEditModal() {
+  editingProductId = null;
+  el("editModal")?.classList.remove("show");
+}
+
+function openStockModal(row) {
+  editingStockProductId = row.invProductId;
+  if (el("stockValue")) el("stockValue").value = String(row.stock ?? 0);
+  el("stockModal")?.classList.add("show");
+  el("stockValue")?.focus();
+  el("stockValue")?.select();
+}
+
+function closeStockModal() {
+  editingStockProductId = null;
+  el("stockModal")?.classList.remove("show");
+}
+
+function openArchiveModal(row) {
+  archivingRow = row;
+  const text = el("archiveModalText");
+  if (text) text.textContent = `Archive ${row.name}?`;
+  el("archiveModal")?.classList.add("show");
+}
+
+function closeArchiveModal() {
+  archivingRow = null;
+  el("archiveModal")?.classList.remove("show");
+}
+
+async function saveStockModal() {
+  if (!editingStockProductId) return;
+
+  const newStock = Number(el("stockValue")?.value);
+  if (!Number.isFinite(newStock) || newStock < 0) {
+    alert("Invalid stock value.");
+    return;
+  }
+
+  const { error } = await supabase
+    .from("inventory")
+    .update({ stock: newStock, updated_at: new Date().toISOString() })
+    .eq("product_id", editingStockProductId);
+
+  if (error) {
+    alert("Stock update failed: " + error.message);
+    return;
+  }
+
+  closeStockModal();
+  await loadInventory();
+}
+
+async function saveEditModal() {
+  if (!editingProductId) return;
+
+  const name = String(el("editName")?.value || "").trim();
+  const price = Number(el("editPrice")?.value);
+
+  if (!name) {
+    alert("Invalid product name.");
+    return;
+  }
+  if (!Number.isFinite(price) || price < 0) {
+    alert("Invalid price.");
+    return;
+  }
+
+  const { error } = await supabase
+    .from("products")
+    .update({ name, price })
+    .eq("id", editingProductId);
+
+  if (error) {
+    alert("Edit failed: " + error.message);
+    return;
+  }
+
+  closeEditModal();
+  await loadInventory();
+}
+
+function closeAllActionMenus() {
+  document.querySelectorAll(".action-dropdown.show").forEach((menu) => {
+    menu.classList.remove("show");
+  });
+}
 
 /* =========================
    LOAD INVENTORY
@@ -86,14 +185,11 @@ async function loadInventory() {
 }
 
 /* =========================
-   DELETE
+  ARCHIVE
 ========================= */
-async function deleteProduct(row) {
-  const ok = confirm(`Delete ${row.name}?`);
-  if (!ok) return;
-
+async function archiveProduct(row) {
   setErr("");
-  setMsg("Deleting…");
+  setMsg("Archiving…");
 
   const { error: invErr } = await supabase
     .from("inventory")
@@ -101,23 +197,13 @@ async function deleteProduct(row) {
     .eq("product_id", row.invProductId);
 
   if (invErr) {
-    setErr("Delete failed (inventory): " + invErr.message);
+    setErr("Archive failed (inventory): " + invErr.message);
     setMsg("");
     return;
   }
 
-  const { error: prodErr } = await supabase
-    .from("products")
-    .delete()
-    .eq("id", row.id);
-
-  if (prodErr) {
-    setErr("Inventory deleted, but product delete failed: " + prodErr.message);
-    setMsg("");
-    return;
-  }
-
-  setMsg("✅ Deleted!");
+  closeArchiveModal();
+  setMsg("✅ Archived!");
   await loadInventory();
 }
 
@@ -141,9 +227,14 @@ function renderTable(rows) {
           isAdmin
             ? `
           <td>
-            <button class="btn" data-upstock="${r.invProductId}" data-stock="${r.stock}">Stock</button>
-            <button class="btn" data-edit="${r.id}">Edit</button>
-            <button class="btn" style="background:#dc2626" data-del="${r.id}">Delete</button>
+            <div class="action-menu">
+              <button class="dot-btn" type="button" aria-label="Actions" data-menu-toggle="${r.id}">⋮</button>
+              <div class="action-dropdown" data-menu="${r.id}">
+                <button class="menu-item" type="button" data-upstock="${r.invProductId}">Stock</button>
+                <button class="menu-item" type="button" data-edit="${r.id}">Edit</button>
+                <button class="menu-item danger" type="button" data-archive="${r.id}">Archive</button>
+              </div>
+            </div>
           </td>`
             : ""
         }
@@ -154,71 +245,48 @@ function renderTable(rows) {
 
   if (!isAdmin) return;
 
+  // ACTION MENU TOGGLE
+  document.querySelectorAll("[data-menu-toggle]").forEach((btn) => {
+    btn.onclick = (event) => {
+      event.stopPropagation();
+      const menuId = btn.dataset.menuToggle;
+      const menu = document.querySelector(`[data-menu="${menuId}"]`);
+      if (!menu) return;
+
+      const isOpen = menu.classList.contains("show");
+      closeAllActionMenus();
+      if (!isOpen) menu.classList.add("show");
+    };
+  });
+
   // STOCK
   document.querySelectorAll("[data-upstock]").forEach((btn) => {
     btn.onclick = async () => {
+      closeAllActionMenus();
       const invId = btn.dataset.upstock;
-      const current = Number(btn.dataset.stock || 0);
-      const value = prompt("New stock:", String(current));
-      if (value === null) return;
-
-      const newStock = Number(value);
-      if (!Number.isFinite(newStock) || newStock < 0) {
-        alert("Invalid stock value.");
-        return;
-      }
-
-      const { error } = await supabase
-        .from("inventory")
-        .update({ stock: newStock, updated_at: new Date().toISOString() })
-        .eq("product_id", invId);
-
-      if (error) {
-        alert("Stock update failed: " + error.message);
-        return;
-      }
-
-      await loadInventory();
+      const row = allRows.find((x) => String(x.invProductId) === String(invId));
+      if (!row) return;
+      openStockModal(row);
     };
   });
 
-  // EDIT (price + min_stock)
+  // EDIT (name + price)
   document.querySelectorAll("[data-edit]").forEach((btn) => {
-    btn.onclick = async () => {
+    btn.onclick = () => {
+      closeAllActionMenus();
       const productId = btn.dataset.edit;
       const row = allRows.find((x) => String(x.id) === String(productId));
       if (!row) return;
-
-      const priceStr = prompt("New price:", String(row.price));
-      if (priceStr === null) return;
-
-      const minStr = prompt("New min stock:", String(row.min));
-      if (minStr === null) return;
-
-      const price = Number(priceStr);
-      const min = Number(minStr);
-      if (!Number.isFinite(price) || price < 0) return alert("Invalid price.");
-      if (!Number.isFinite(min) || min < 0) return alert("Invalid min stock.");
-
-      const { error } = await supabase
-        .from("products")
-        .update({ price, min_stock: min })
-        .eq("id", productId);
-
-      if (error) {
-        alert("Edit failed: " + error.message);
-        return;
-      }
-
-      await loadInventory();
+      openEditModal(row);
     };
   });
 
-  // DELETE
-  document.querySelectorAll("[data-del]").forEach((btn) => {
+  // ARCHIVE
+  document.querySelectorAll("[data-archive]").forEach((btn) => {
     btn.onclick = () => {
-      const row = allRows.find((x) => String(x.id) === String(btn.dataset.del));
-      if (row) deleteProduct(row);
+      closeAllActionMenus();
+      const row = allRows.find((x) => String(x.id) === String(btn.dataset.archive));
+      if (row) openArchiveModal(row);
     };
   });
 }
@@ -232,12 +300,11 @@ async function addProduct() {
 
   const name = (el("pName")?.value || "").trim();
   const price = Number(el("pPrice")?.value);
-  const min = Number(el("pMin")?.value || 5);
+  const min = 50;
   const stock = Number(el("pStock")?.value || 0);
 
   if (!name) return setErr("Product name required.");
   if (!Number.isFinite(price) || price < 0) return setErr("Invalid price.");
-  if (!Number.isFinite(min) || min < 0) return setErr("Invalid min stock.");
   if (!Number.isFinite(stock) || stock < 0) return setErr("Invalid initial stock.");
 
   setMsg("Adding product…");
@@ -260,7 +327,6 @@ async function addProduct() {
 
   el("pName").value = "";
   el("pPrice").value = "";
-  el("pMin").value = "";
   el("pStock").value = "";
 
   await loadInventory();
@@ -277,7 +343,13 @@ async function main() {
   if (el("userEmail")) el("userEmail").textContent = user.email || "(no email)";
 
   const role = await getMyRole(user.id);
+  localStorage.setItem("kairo_role", role);
   if (el("userRole")) el("userRole").textContent = role;
+
+  if (role === "staff") {
+    window.location.href = "./sales.html";
+    return;
+  }
 
   isAdmin = role === "admin";
 
@@ -294,6 +366,7 @@ async function main() {
   el("logoutBtn")?.addEventListener("click", async () => {
     try {
       await supabase.auth.signOut();
+      localStorage.removeItem("kairo_role");
     } finally {
       window.location.href = "./index.html";
     }
@@ -302,6 +375,32 @@ async function main() {
   el("refreshBtn")?.addEventListener("click", loadInventory);
   el("search")?.addEventListener("input", () => renderTable(allRows));
   el("addProductBtn")?.addEventListener("click", addProduct);
+  el("editCancelBtn")?.addEventListener("click", closeEditModal);
+  el("editSaveBtn")?.addEventListener("click", saveEditModal);
+  el("editModal")?.addEventListener("click", (event) => {
+    if (event.target === el("editModal")) closeEditModal();
+  });
+  el("stockCancelBtn")?.addEventListener("click", closeStockModal);
+  el("stockSaveBtn")?.addEventListener("click", saveStockModal);
+  el("stockModal")?.addEventListener("click", (event) => {
+    if (event.target === el("stockModal")) closeStockModal();
+  });
+  el("archiveCancelBtn")?.addEventListener("click", closeArchiveModal);
+  el("archiveConfirmBtn")?.addEventListener("click", async () => {
+    if (!archivingRow) return;
+    await archiveProduct(archivingRow);
+  });
+  el("archiveModal")?.addEventListener("click", (event) => {
+    if (event.target === el("archiveModal")) closeArchiveModal();
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      closeEditModal();
+      closeStockModal();
+      closeArchiveModal();
+    }
+  });
+  document.addEventListener("click", closeAllActionMenus);
 
   await loadInventory();
 }

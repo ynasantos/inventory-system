@@ -50,10 +50,72 @@ async function getMyRole(userId) {
     console.error("getMyRole error:", error);
     return "staff";
   }
-  return data?.role || "staff";
+  return String(data?.role || "staff").trim().toLowerCase();
 }
 
 let allUsers = [];
+let editingRoleUserId = null;
+
+function closeAllActionMenus() {
+  document.querySelectorAll(".action-dropdown.show").forEach((menu) => {
+    menu.classList.remove("show");
+  });
+}
+
+function openRoleModal(userId) {
+  const user = allUsers.find((u) => u.id === userId);
+  if (!user) return;
+
+  editingRoleUserId = userId;
+
+  const currentRole = user.role === "admin" ? "admin" : "staff";
+  const emailText = user.email ? `User: ${user.email}` : "User account";
+
+  const emailEl = el("roleModalEmail");
+  const selectEl = el("roleModalSelect");
+  const backdropEl = el("roleModalBackdrop");
+
+  if (emailEl) emailEl.textContent = emailText;
+  if (selectEl) selectEl.value = currentRole;
+  if (backdropEl) {
+    backdropEl.classList.add("show");
+    backdropEl.setAttribute("aria-hidden", "false");
+  }
+}
+
+function closeRoleModal() {
+  editingRoleUserId = null;
+  const backdropEl = el("roleModalBackdrop");
+  if (backdropEl) {
+    backdropEl.classList.remove("show");
+    backdropEl.setAttribute("aria-hidden", "true");
+  }
+}
+
+async function saveRoleFromModal() {
+  if (!editingRoleUserId) return;
+
+  setErr("");
+  setMsg("Saving role…");
+
+  const selectEl = el("roleModalSelect");
+  const newRole = selectEl?.value || "staff";
+
+  const { error } = await supabase.rpc("admin_set_user_role", {
+    p_user_id: editingRoleUserId,
+    p_role: newRole,
+  });
+
+  if (error) {
+    setErr(error.message);
+    setMsg("");
+    return;
+  }
+
+  closeRoleModal();
+  setMsg("✅ Updated role!");
+  await loadUsers();
+}
 
 function renderUsers() {
   const q = (el("search")?.value || "").trim().toLowerCase();
@@ -70,19 +132,17 @@ function renderUsers() {
         <tr>
           <td>${escapeHtml(u.email || "")}</td>
           <td>
-            <span class="pill ${role}">${role.toUpperCase()}</span>
-            <div style="height:8px"></div>
-            <select data-role="${u.id}">
-              <option value="staff" ${role === "staff" ? "selected" : ""}>staff</option>
-              <option value="admin" ${role === "admin" ? "selected" : ""}>admin</option>
-            </select>
+            <div class="role-inline">
+              <span class="pill ${role}">${role.toUpperCase()}</span>
+              <button class="icon-btn" data-edit-role="${u.id}" title="Edit role" aria-label="Edit role">⋮</button>
+            </div>
           </td>
-          <td>${fmtDate(u.created_at)}</td>
           <td>
-            <div class="row-actions">
-              <button class="btn mini save" data-save="${u.id}">Save</button>
-              <button class="btn mini copy" data-copy="${u.id}">Copy ID</button>
-              <button class="btn mini delete" data-delete="${u.id}">Delete</button>
+            <div class="action-menu">
+              <button class="icon-btn" data-actions-toggle="${u.id}" title="Actions" aria-label="Actions">⋮</button>
+              <div class="action-dropdown" data-actions-menu="${u.id}">
+                <button class="menu-btn-danger" data-delete-action="${u.id}">Delete</button>
+              </div>
             </div>
           </td>
         </tr>
@@ -90,62 +150,50 @@ function renderUsers() {
     })
     .join("");
 
-  // Save role buttons
-  document.querySelectorAll("button[data-save]").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      setErr("");
-      setMsg("");
-
-      const userId = btn.getAttribute("data-save");
-      const sel = document.querySelector(`select[data-role="${userId}"]`);
-      const newRole = sel?.value || "staff";
-
-      setMsg("Saving role…");
-
-      const { error } = await supabase.rpc("admin_set_user_role", {
-        p_user_id: userId,
-        p_role: newRole,
-      });
-
-      if (error) {
-        setErr(error.message);
-        setMsg("");
-        return;
-      }
-
-      setMsg("✅ Updated role!");
-      await loadUsers();
+  // Open role modal buttons
+  document.querySelectorAll("button[data-edit-role]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const userId = btn.getAttribute("data-edit-role");
+      if (!userId) return;
+      openRoleModal(userId);
     });
   });
 
-  // Copy ID buttons
-  document.querySelectorAll("button[data-copy]").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      const userId = btn.getAttribute("data-copy");
-      try {
-        await navigator.clipboard.writeText(userId);
-        setMsg("Copied user ID ✅");
-      } catch {
-        alert("Copy failed. User ID:\n" + userId);
-      }
+  // Actions menu toggles
+  document.querySelectorAll("button[data-actions-toggle]").forEach((btn) => {
+    btn.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const userId = btn.getAttribute("data-actions-toggle");
+      if (!userId) return;
+
+      const menu = document.querySelector(`[data-actions-menu="${userId}"]`);
+      const shouldOpen = !menu?.classList.contains("show");
+
+      closeAllActionMenus();
+      if (shouldOpen && menu) menu.classList.add("show");
     });
   });
 
-  // Delete buttons
-document.querySelectorAll("button[data-delete]").forEach((btn) => {
+  // Delete action buttons
+  document.querySelectorAll("button[data-delete-action]").forEach((btn) => {
   btn.addEventListener("click", async () => {
+    closeAllActionMenus();
     setErr("");
     setMsg("");
 
-    const userId = btn.getAttribute("data-delete");
+    const userId = btn.getAttribute("data-delete-action");
+
+    console.log("Attempting to delete user with ID:", userId);
 
     if (!confirm("Are you sure you want to delete this user?")) return;
 
     setMsg("Deleting user…");
 
-    const { error } = await supabase.rpc("admin_delete_user", {
-      p_user_id: userId,
-    });
+   const { error } = await supabase.rpc("admin_delete_user", {
+  p_user_id: userId,
+});
+
+    console.log("Delete user RPC completed. Error:", error);
 
     if (error) {
       setErr("Delete failed: " + error.message);
@@ -154,9 +202,11 @@ document.querySelectorAll("button[data-delete]").forEach((btn) => {
     }
 
     setMsg("✅ User deleted!");
-    await loadUsers();
+    loadUsers();
   });
 });
+
+  document.addEventListener("click", closeAllActionMenus, { once: true });
 }
 
 async function loadUsers() {
@@ -270,6 +320,7 @@ async function main() {
   el("userEmail").textContent = user.email || "(no email)";
 
   const myRole = await getMyRole(user.id);
+  localStorage.setItem("kairo_role", myRole);
   el("userRole").textContent = myRole;
 
   if (myRole !== "admin") {
@@ -279,12 +330,23 @@ async function main() {
 
   el("search")?.addEventListener("input", renderUsers);
   el("refreshBtn")?.addEventListener("click", loadUsers);
+  el("roleModalCancel")?.addEventListener("click", closeRoleModal);
+  el("roleModalSave")?.addEventListener("click", saveRoleFromModal);
+
+  el("roleModalBackdrop")?.addEventListener("click", (event) => {
+    if (event.target === event.currentTarget) closeRoleModal();
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") closeRoleModal();
+  });
 
   // ✅ THIS is the missing wiring:
   el("createUserBtn")?.addEventListener("click", createUser);
 
   el("logoutBtn")?.addEventListener("click", async () => {
     await supabase.auth.signOut();
+    localStorage.removeItem("kairo_role");
     window.location.href = "./index.html";
   });
 

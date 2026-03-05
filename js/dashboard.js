@@ -40,7 +40,10 @@ async function getMyRole(userId) {
     return { role: "staff", full_name: "" };
   }
 
-  return { role: data?.role || "staff", full_name: data?.full_name || "" };
+  return {
+    role: String(data?.role || "staff").trim().toLowerCase(),
+    full_name: data?.full_name || "",
+  };
 }
 
 function escapeHtml(str) {
@@ -149,17 +152,30 @@ async function main() {
     if (!user) return;
 
     const { role, full_name } = await getMyRole(user.id);
+    localStorage.setItem("kairo_role", role);
+
+    document.documentElement.classList.remove("role-admin", "role-staff", "role-user");
+    if (role === "admin") {
+      document.documentElement.classList.add("role-admin");
+    } else if (role === "staff") {
+      document.documentElement.classList.add("role-staff");
+    } else {
+      document.documentElement.classList.add("role-user");
+    }
+
+    if (role === "staff") {
+      window.location.href = "./sales.html";
+      return;
+    }
 
     el("who").textContent = full_name ? full_name : (user.email || "User");
     el("role").textContent = role;
-
-    const adminLink = document.getElementById("adminLink");
-    if (adminLink) adminLink.style.display = role === "admin" ? "block" : "none";
 
     const logoutBtn = document.getElementById("logoutBtn");
     if (logoutBtn) {
       logoutBtn.addEventListener("click", async () => {
         await supabase.auth.signOut();
+        localStorage.removeItem("kairo_role");
         window.location.href = "./index.html";
       });
     }

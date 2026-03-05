@@ -26,7 +26,39 @@ async function getMyRole(userId) {
     console.error("Role read failed:", error);
     return "staff";
   }
-  return data?.role || "staff";
+  return String(data?.role || "staff").trim().toLowerCase();
+}
+
+function normalizeRole(role) {
+  return String(role || "").trim().toLowerCase();
+}
+
+function applyNavByRole(role) {
+  const navDashboard = document.getElementById("navDashboard");
+  const navInventory = document.getElementById("navInventory");
+  const navReports = document.getElementById("navReports");
+  const navAdmin = document.getElementById("navAdmin");
+
+  if (role === "admin") {
+    if (navDashboard) navDashboard.style.display = "block";
+    if (navInventory) navInventory.style.display = "block";
+    if (navReports) navReports.style.display = "block";
+    if (navAdmin) navAdmin.style.display = "block";
+    return;
+  }
+
+  if (role !== "staff") {
+    if (navDashboard) navDashboard.style.display = "block";
+    if (navInventory) navInventory.style.display = "block";
+    if (navReports) navReports.style.display = "block";
+    if (navAdmin) navAdmin.style.display = "none";
+    return;
+  }
+
+  if (navDashboard) navDashboard.style.display = "none";
+  if (navInventory) navInventory.style.display = "none";
+  if (navReports) navReports.style.display = "none";
+  if (navAdmin) navAdmin.style.display = "none";
 }
 
 function renderProducts() {
@@ -43,8 +75,10 @@ function renderProducts() {
       <td>${peso(p.price)}</td>
       <td>${p.stock}</td>
       <td>
-        <button class="btn rowbtn" data-add="${p.id}" ${p.stock <= 0 ? "disabled" : ""}>
-          Add
+        <button class="btn rowbtn" data-add="${p.id}" aria-label="Add to cart" title="Add" ${p.stock <= 0 ? "disabled" : ""}>
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+          </svg>
         </button>
       </td>
     </tr>
@@ -192,14 +226,24 @@ async function main() {
 
   el("userEmail").textContent = user.email || "(no email)";
 
+  const cachedRole = normalizeRole(localStorage.getItem("kairo_role"));
+  if (cachedRole) applyNavByRole(cachedRole);
+
   // ✅ role + hide admin tab for staff
   const role = await getMyRole(user.id);
+  localStorage.setItem("kairo_role", role);
+  document.documentElement.classList.remove("role-admin", "role-staff", "role-user");
+  if (role === "admin") {
+    document.documentElement.classList.add("role-admin");
+  } else if (role === "staff") {
+    document.documentElement.classList.add("role-staff");
+  } else {
+    document.documentElement.classList.add("role-user");
+  }
 
   const userRoleEl = document.getElementById("userRole");
   if (userRoleEl) userRoleEl.textContent = role;
-
-  const navAdmin = document.getElementById("navAdmin");
-  if (navAdmin) navAdmin.style.display = role === "admin" ? "block" : "none";
+  applyNavByRole(role);
 
   el("search").addEventListener("input", renderProducts);
 
@@ -214,6 +258,8 @@ async function main() {
 
   el("logoutBtn").addEventListener("click", async () => {
     await supabase.auth.signOut();
+    localStorage.removeItem("kairo_role");
+    document.documentElement.classList.remove("role-admin", "role-staff", "role-user");
     window.location.href = "./index.html";
   });
 

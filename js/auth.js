@@ -19,6 +19,7 @@ function setError(message) {
 form.addEventListener("submit", async (e) => {
   e.preventDefault();
   setError("");
+  localStorage.removeItem("kairo_role");
 
   const emailInput = document.getElementById("email");
   const passwordInput = document.getElementById("password");
@@ -68,6 +69,22 @@ form.addEventListener("submit", async (e) => {
     if (!sessionData.session) {
       setError("Login succeeded but no session was found. Please try again.");
       return;
+    }
+
+    try {
+      const userId = sessionData.session.user?.id;
+      if (userId) {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("role")
+          .eq("id", userId)
+          .maybeSingle();
+
+        const role = String(profile?.role || "").trim().toLowerCase();
+        if (role) localStorage.setItem("kairo_role", role);
+      }
+    } catch (roleErr) {
+      console.error("Role prefetch failed:", roleErr);
     }
 
     // Success: redirect

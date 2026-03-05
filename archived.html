@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Inventory</title>
+  <title>Archived Items</title>
 
   <style>
     *{box-sizing:border-box;margin:0;padding:0;font-family:Segoe UI,Arial,sans-serif}
@@ -12,15 +12,8 @@
 
     .sidebar{width:250px;background:#D33551;color:#fff;display:flex;flex-direction:column;padding:20px}
     .brand{display:flex;gap:12px;align-items:center;margin-bottom:22px}
-
-    /* ✅ LOGO IMAGE */
-    .logo{
-      width:42px;height:42px;border-radius:10px;
-      display:flex;align-items:center;justify-content:center;
-      overflow:hidden;background:#111827;
-    }
+    .logo{width:42px;height:42px;border-radius:10px;display:flex;align-items:center;justify-content:center;overflow:hidden;background:#111827}
     .logo img{width:100%;height:100%;object-fit:cover;object-position:center;display:block}
-
     .brand-title{font-size:18px;font-weight:900}
     .brand-sub{font-size:12px;opacity:.7}
 
@@ -37,32 +30,16 @@
     .page-title{font-size:24px;font-weight:900}
     .page-sub{font-size:13px;color:#6b7280;margin-top:4px}
 
-    .top-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
-    .top-actions input{height:42px}
-    .top-actions .btn{
-      height:42px;
-      min-width:128px;
-      display:inline-flex;
-      align-items:center;
-      justify-content:center;
-      padding:0 14px;
-    }
-
     .card{background:#fff;border-radius:14px;padding:18px;box-shadow:0 10px 20px rgba(0,0,0,.06)}
     .muted{color:#6b7280;font-size:14px;line-height:1.4}
     .danger{color:#dc2626;font-weight:800}
 
-    input,select{padding:10px 12px;border:1px solid #e5e7eb;border-radius:10px;outline:none}
-    input:focus,select:focus{border-color:#93c5fd}
+    input{padding:10px 12px;border:1px solid #e5e7eb;border-radius:10px;outline:none}
+    input:focus{border-color:#93c5fd}
 
     table{width:100%;border-collapse:collapse;margin-top:12px}
     th,td{padding:10px;border-bottom:1px solid #eef2f7;text-align:left;font-size:14px;vertical-align:middle}
     th{font-size:12px;color:#6b7280}
-
-    .status{font-size:12px;font-weight:900;padding:6px 10px;border-radius:999px;display:inline-block}
-    .status.ok{background:#dcfce7;color:#166534}
-    .status.low{background:#e0f2fe;color:#0369a1}
-    .status.out{background:#fee2e2;color:#991b1b}
 
     .action-menu{position:relative;display:inline-block}
     .dot-btn{
@@ -95,16 +72,13 @@
     .btn-cancel{background:#e5e7eb;color:#111827}
     .btn-danger{background:#b91c1c;color:#fff}
 
-    .hidden{display:none}
-
     @media (max-width: 900px){
       .sidebar{width:200px}
       .main{padding:16px}
     }
   </style>
 
-  <!-- ✅ bump version to force GitHub Pages refresh -->
-  <script type="module" src="./js/inventory.js?v=10008"></script>
+  <script type="module" src="./js/archived.js?v=4"></script>
 </head>
 
 <body>
@@ -122,10 +96,11 @@
 
       <nav class="nav">
         <a href="./dashboard.html">Dashboard</a>
-        <a class="active" href="./inventory.html">Inventory</a>
+        <a href="./inventory.html">Inventory</a>
         <a href="./sales.html">Sales</a>
         <a href="./reports.html">Reports</a>
         <a href="./history.html">History</a>
+        <a class="active" href="./archived.html">Archived Items</a>
         <a id="navAdmin" href="./admin.html">Admin</a>
       </nav>
 
@@ -141,108 +116,58 @@
     <main class="main">
       <header class="topbar">
         <div>
-          <div class="page-title">Inventory</div>
-          <div class="page-sub">Manage stock and products</div>
+          <div class="page-title">Archived Items</div>
+          <div class="page-sub">Restore products back to inventory</div>
         </div>
 
-        <div class="top-actions">
-          <input id="search" placeholder="Search product..." style="min-width:240px;">
-          <a class="btn" href="./archived.html" style="text-decoration:none;display:inline-flex;align-items:center;">Archived Items</a>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+          <input id="search" placeholder="Search archived product..." style="min-width:240px;">
           <button class="btn" id="refreshBtn">Refresh</button>
         </div>
       </header>
 
-      <div class="card" id="adminTools">
-        <h3 style="margin-bottom:10px;">Add Product</h3>
-
-        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:end;">
-          <div style="display:flex;flex-direction:column;gap:6px;min-width:220px;flex:1;">
-            <label style="font-size:12px;color:#6b7280;">Product name</label>
-            <input id="pName" placeholder="Book Name" />
-          </div>
-
-          <div style="display:flex;flex-direction:column;gap:6px;min-width:140px;">
-            <label style="font-size:12px;color:#6b7280;">Price</label>
-            <input id="pPrice" type="number" placeholder="0" />
-          </div>
-
-          <div style="display:flex;flex-direction:column;gap:6px;min-width:140px;">
-            <label style="font-size:12px;color:#6b7280;">Initial stock</label>
-            <input id="pStock" type="number" placeholder="0" />
-          </div>
-
-          <button class="btn" id="addProductBtn">Add Product</button>
-        </div>
-
+      <div class="card">
+        <div class="muted" id="tableNote">Loading archived items…</div>
         <div class="muted" id="msg" style="margin-top:10px;"></div>
         <div class="danger" id="err" style="margin-top:8px;"></div>
-      </div>
-
-      <div style="height:14px;"></div>
-
-      <div class="card">
-        <div class="muted" id="tableNote">Loading inventory…</div>
 
         <table>
           <thead>
             <tr>
               <th>Product</th>
               <th>Price</th>
-              <th>Stock</th>
               <th>Min</th>
-              <th>Status</th>
-              <th id="thAction">Actions</th>
+              <th>Actions</th>
             </tr>
           </thead>
-          <tbody id="invBody"></tbody>
+          <tbody id="archivedBody"></tbody>
         </table>
       </div>
 
-      <div id="editModal" class="modal-backdrop">
-        <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="editModalTitle">
-          <div class="modal-title" id="editModalTitle">Edit Product</div>
+      <div id="restoreModal" class="modal-backdrop">
+        <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="restoreModalTitle">
+          <div class="modal-title" id="restoreModalTitle">Restore Product</div>
           <div class="modal-grid">
+            <div id="restoreModalText" class="muted"></div>
             <div>
-              <div class="modal-label">Product name</div>
-              <input id="editName" type="text" />
-            </div>
-            <div>
-              <div class="modal-label">Price</div>
-              <input id="editPrice" type="number" min="0" step="0.01" />
+              <div class="modal-label">Initial stock</div>
+              <input id="restoreStockValue" type="number" min="0" step="1" />
             </div>
           </div>
           <div class="modal-actions">
-            <button class="btn btn-cancel" id="editCancelBtn" type="button">Cancel</button>
-            <button class="btn" id="editSaveBtn" type="button">Save</button>
+            <button class="btn btn-cancel" id="restoreCancelBtn" type="button">Cancel</button>
+            <button class="btn" id="restoreConfirmBtn" type="button">Restore</button>
           </div>
         </div>
       </div>
 
-      <div id="stockModal" class="modal-backdrop">
-        <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="stockModalTitle">
-          <div class="modal-title" id="stockModalTitle">Update Stock</div>
-          <div class="modal-grid">
-            <div>
-              <div class="modal-label">New stock</div>
-              <input id="stockValue" type="number" min="0" step="1" />
-            </div>
-          </div>
+      <div id="deleteModal" class="modal-backdrop">
+        <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="deleteModalTitle">
+          <div class="modal-title" id="deleteModalTitle">Delete Product</div>
+          <div id="deleteModalText" class="muted">This cannot be undone.</div>
           <div class="modal-actions">
-            <button class="btn btn-cancel" id="stockCancelBtn" type="button">Cancel</button>
-            <button class="btn" id="stockSaveBtn" type="button">Save</button>
-          </div>
-        </div>
-      </div>
-
-      <div id="archiveModal" class="modal-backdrop">
-        <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="archiveModalTitle">
-          <div class="modal-title" id="archiveModalTitle">Archive Product</div>
-          <div class="modal-grid">
-            <div id="archiveModalText" class="muted">Are you sure you want to archive this product?</div>
-          </div>
-          <div class="modal-actions">
-            <button class="btn btn-cancel" id="archiveCancelBtn" type="button">Cancel</button>
-            <button class="btn btn-danger" id="archiveConfirmBtn" type="button">Archive</button>
+            <button class="btn btn-cancel" id="deleteCancelBtn" type="button">Cancel</button>
+            <button class="btn btn-danger" id="deleteConfirmBtn" type="button">Delete</button>
           </div>
         </div>
       </div>

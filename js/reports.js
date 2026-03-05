@@ -20,11 +20,10 @@ async function getRole(userId) {
     .maybeSingle();
 
   if (error) return "staff";
-  return data?.role || "staff";
+  return String(data?.role || "staff").trim().toLowerCase();
 }
 
 function toRange(startDateStr, endDateStr) {
-  // inclusive start, exclusive end (end + 1 day)
   const start = new Date(startDateStr + "T00:00:00");
   const end = new Date(endDateStr + "T00:00:00");
   end.setDate(end.getDate() + 1);
@@ -40,63 +39,159 @@ function escapeHtml(str) {
     .replaceAll("'", "&#039;");
 }
 
-async function loadAll() {
+function asNumber(value, fallback = 0) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+async function loadTransactionHistoryData(userId, role, start, end) {
+  let salesQuery = supabase
+    .from("sales")
+    .select("id,total,user_id,created_at")
+    .gte("created_at", start)
+    .lt("created_at", end);
+
+  if (role !== "admin") {
+    salesQuery = salesQuery.eq("user_id", userId);
+  }
+
+  const { data: salesRows, error: salesErr } = await salesQuery;
+  if (salesErr) {
+    throw new Error("Transaction read error (sales): " + salesErr.message);
+  }
+
+  const saleIds = (salesRows || []).map((row) => row.id).filter(Boolean);
+  if (!saleIds.length) {
+    return { salesRows: salesRows || [], itemRows: [] };
+  }
+
+  let itemRows = [];
+  let itemErr = null;
+  const itemTableAttempts = ["sale_items", "sales_items"];
+
+  for (const table of itemTableAttempts) {
+    const { data, error } = await supabase
+      .from(table)
+      .select("sale_id, product_id, qty, products:product_id(name,price)")
+      .in("sale_id", saleIds);
+
+    if (error) {
+      itemErr = error;
+      continue;
+    }
+
+    itemRows = data || [];
+    itemErr = null;
+    break;
+  }
+
+  if (itemErr) {
+    throw new Error("Transaction read error (sale items): " + itemErr.message);
+  }
+
+  return { salesRows: salesRows || [], itemRows };
+}
+
+function computeSummaryFromTransactions(salesRows, itemRows) {
+  const orders = (salesRows || []).length;
+  const revenue = (salesRows || []).reduce((sum, row) => sum + asNumber(row.total), 0);
+  const itemsSold = (itemRows || []).reduce((sum, row) => sum + asNumber(row.qty), 0);
+  const avgOrder = orders > 0 ? revenue / orders : 0;
+
+  return {
+    orders,
+    items_sold: itemsSold,
+    revenue,
+    avg_order: avgOrder,
+  };
+}
+
+function computeProductRanking(itemRows, sortDir = "desc") {
+  const aggregate = new Map();
+
+  for (const row of itemRows || []) {
+    const name = String(row.products?.name || "Unknown");
+    const qty = asNumber(row.qty, 0);
+    const price = asNumber(row.products?.price, 0);
+
+    const current = aggregate.get(name) || { name, qty: 0, revenue: 0 };
+    current.qty += qty;
+    current.revenue += qty * price;
+    aggregate.set(name, current);
+  }
+
+  const rows = [...aggregate.values()];
+  rows.sort((a, b) => {
+    if (sortDir === "asc") return (a.qty - b.qty) || (a.revenue - b.revenue);
+    return (b.qty - a.qty) || (b.revenue - a.revenue);
+  });
+
+  return rows;
+}
+
+async function loadAll(userId, role) {
   el("err").textContent = "";
 
   const startDate = el("startDate").value;
   const endDate = el("endDate").value;
-
   const { start, end } = toRange(startDate, endDate);
 
-  // Summary
-  const sum = await supabase.rpc("report_sales_summary", { p_start: start, p_end: end });
-  if (sum.error) {
-    el("err").textContent = "Summary error: " + sum.error.message;
+  let txData;
+  try {
+    txData = await loadTransactionHistoryData(userId, role, start, end);
+  } catch (txErr) {
+    el("err").textContent = String(txErr.message || txErr);
     return;
   }
-  const s = sum.data?.[0] || { orders: 0, items_sold: 0, revenue: 0, avg_order: 0 };
-  el("orders").textContent = s.orders ?? 0;
-  el("itemsSold").textContent = s.items_sold ?? 0;
-  el("revenue").textContent = peso(s.revenue);
-  el("avgOrder").textContent = peso(s.avg_order);
 
-  // Fast moving
-  el("fastNote").textContent = "Loading…";
-  const fast = await supabase.rpc("report_fast_moving", { p_start: start, p_end: end, p_limit: 10 });
-  if (fast.error) {
-    el("fastNote").textContent = "Error: " + fast.error.message;
-    el("fastBody").innerHTML = "";
-  } else {
-    const rows = fast.data || [];
-    el("fastNote").textContent = rows.length ? "" : "No sales in this range.";
-    el("fastBody").innerHTML = rows.map(r => `
-      <tr>
-        <td>${escapeHtml(r.name)}</td>
-        <td>${r.qty}</td>
-        <td>${peso(r.revenue)}</td>
-      </tr>
-    `).join("");
+  console.group("[REPORT TX DEBUG]");
+  console.log("range:", { start, end, role, userId });
+  console.log("sales rows:", (txData.salesRows || []).length);
+  console.log("item rows:", (txData.itemRows || []).length);
+  console.groupEnd();
+
+  if ((txData.salesRows || []).length > 0 && (txData.itemRows || []).length === 0) {
+    el("err").textContent = "Sales exist, but transaction item rows are empty. Check sale_items data/RLS for this account.";
   }
 
-  // Slow moving
-  el("slowNote").textContent = "Loading…";
-  const slow = await supabase.rpc("report_slow_moving", { p_start: start, p_end: end, p_limit: 10 });
-  if (slow.error) {
-    el("slowNote").textContent = "Error: " + slow.error.message;
-    el("slowBody").innerHTML = "";
-  } else {
-    const rows = slow.data || [];
-    el("slowNote").textContent = rows.length ? "" : "No products found.";
-    el("slowBody").innerHTML = rows.map(r => `
-      <tr>
-        <td>${escapeHtml(r.name)}</td>
-        <td>${r.qty}</td>
-        <td>${peso(r.revenue)}</td>
-      </tr>
-    `).join("");
-  }
+  const summary = computeSummaryFromTransactions(txData.salesRows, txData.itemRows);
+  el("orders").textContent = summary.orders;
+  el("itemsSold").textContent = summary.items_sold;
+  el("revenue").textContent = peso(summary.revenue);
+  el("avgOrder").textContent = peso(summary.avg_order);
 
-  // Low stock
+  const fastRows = computeProductRanking(txData.itemRows, "desc").slice(0, 10);
+  el("fastNote").textContent = fastRows.length
+    ? ""
+    : ((txData.salesRows || []).length ? "No transaction item details found." : "No sales in this range.");
+  el("fastBody").innerHTML = fastRows
+    .map(
+      (row) => `
+      <tr>
+        <td>${escapeHtml(row.name)}</td>
+        <td>${row.qty}</td>
+        <td>${peso(row.revenue)}</td>
+      </tr>
+    `
+    )
+    .join("");
+
+  const slowRows = computeProductRanking(txData.itemRows, "asc").slice(0, 10);
+  el("slowNote").textContent = slowRows.length
+    ? ""
+    : ((txData.salesRows || []).length ? "No transaction item details found." : "No products found.");
+  el("slowBody").innerHTML = slowRows
+    .map(
+      (row) => `
+      <tr>
+        <td>${escapeHtml(row.name)}</td>
+        <td>${row.qty}</td>
+        <td>${peso(row.revenue)}</td>
+      </tr>
+    `
+    )
+    .join("");
+
   el("lowNote").textContent = "Loading…";
   const low = await supabase.rpc("report_low_stock");
   if (low.error) {
@@ -105,16 +200,20 @@ async function loadAll() {
   } else {
     const rows = low.data || [];
     el("lowNote").textContent = rows.length ? "" : "No low-stock items 🎉";
-    el("lowBody").innerHTML = rows.map(r => `
+    el("lowBody").innerHTML = rows
+      .map(
+        (row) => `
       <tr>
-        <td>${escapeHtml(r.name)}</td>
-        <td>${r.stock}</td>
-        <td>${r.min_stock}</td>
+        <td>${escapeHtml(row.name)}</td>
+        <td>${row.stock}</td>
+        <td>${row.min_stock}</td>
         <td>
-          <span class="badge ${r.status === "OUT" ? "out" : "low"}">${r.status}</span>
+          <span class="badge ${row.status === "OUT" ? "out" : "low"}">${row.status}</span>
         </td>
       </tr>
-    `).join("");
+    `
+      )
+      .join("");
   }
 }
 
@@ -125,12 +224,16 @@ async function main() {
   el("userEmail").textContent = user.email || "(no email)";
 
   const role = await getRole(user.id);
+  localStorage.setItem("kairo_role", role);
   el("userRole").textContent = role;
 
-  // Hide Admin link for staff
+  if (role === "staff") {
+    window.location.href = "./sales.html";
+    return;
+  }
+
   if (role !== "admin") el("navAdmin").style.display = "none";
 
-  // Default date range: last 30 days
   const today = new Date();
   const end = new Date(today);
   const start = new Date(today);
@@ -139,14 +242,15 @@ async function main() {
   el("startDate").value = start.toISOString().slice(0, 10);
   el("endDate").value = end.toISOString().slice(0, 10);
 
-  el("applyBtn").addEventListener("click", loadAll);
+  el("applyBtn").addEventListener("click", () => loadAll(user.id, role));
 
   el("logoutBtn").addEventListener("click", async () => {
     await supabase.auth.signOut();
+    localStorage.removeItem("kairo_role");
     window.location.href = "./index.html";
   });
 
-  await loadAll();
+  await loadAll(user.id, role);
 }
 
 main();
