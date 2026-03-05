@@ -82,6 +82,7 @@ function renderUsers() {
             <div class="row-actions">
               <button class="btn mini save" data-save="${u.id}">Save</button>
               <button class="btn mini copy" data-copy="${u.id}">Copy ID</button>
+              <button class="btn mini delete" data-delete="${u.id}">Delete</button>
             </div>
           </td>
         </tr>
