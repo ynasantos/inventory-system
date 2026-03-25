@@ -1,7 +1,14 @@
 import { supabase } from "./supabase.js";
 
 const el = (id) => document.getElementById(id);
-const peso = (n) => `₱${Number(n || 0).toFixed(2)}`;
+const peso = (n) => `₱${Number(n || 0).toFixed(2)}`;
+const setText = (id, value) => {
+  const node = el(id);
+  if (node) node.textContent = value;
+};
+
+let currentUser = null;
+let currentRole = "";
 
 async function requireAuth() {
   const { data } = await supabase.auth.getUser();
@@ -43,6 +50,34 @@ function escapeHtml(str) {
 function asNumber(value, fallback = 0) {
   const n = Number(value);
   return Number.isFinite(n) ? n : fallback;
+}
+
+function formatDateShort(dateStr) {
+  if (!dateStr) return "-";
+  const d = new Date(dateStr + "T00:00:00");
+  if (Number.isNaN(d.getTime())) return dateStr;
+  return d.toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "2-digit" });
+}
+
+function formatDateTime(dt = new Date()) {
+  return dt.toLocaleString("en-PH", {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function updatePrintMeta() {
+  const startDate = el("startDate")?.value || "";
+  const endDate = el("endDate")?.value || "";
+  const range = `${formatDateShort(startDate)} - ${formatDateShort(endDate)}`;
+  setText("printRange", range);
+  setText("printGenerated", formatDateTime(new Date()));
+  const email = currentUser?.email || "(no email)";
+  const role = currentRole || "user";
+  setText("printPreparedBy", `${email} (${role})`);
 }
 
 function resetReportView() {
@@ -217,15 +252,19 @@ async function loadAll(userId, role) {
       )
       .join("");
   }
+
+  updatePrintMeta();
 }
 
 async function main() {
   const user = await requireAuth();
   if (!user) return;
+  currentUser = user;
 
   el("userEmail").textContent = user.email || "(no email)";
 
   const role = await getRole(user.id);
+  currentRole = role;
   localStorage.setItem("kairo_role", role);
   el("userRole").textContent = role;
 
@@ -245,6 +284,10 @@ async function main() {
   el("endDate").value = end.toISOString().slice(0, 10);
 
   el("applyBtn").addEventListener("click", () => loadAll(user.id, role));
+  el("printBtn").addEventListener("click", () => {
+    updatePrintMeta();
+    window.print();
+  });
 
   el("logoutBtn").addEventListener("click", async () => {
     await supabase.auth.signOut();
@@ -256,3 +299,5 @@ async function main() {
 }
 
 main();
+
+
