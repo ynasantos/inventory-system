@@ -7,6 +7,29 @@ let products = [];
 let cart = []; // {product_id, name, price, stock, qty}
 let currentUser = null;
 let lastReceipt = null;
+let bookIdMap = new Map();
+
+function formatBookId(n) {
+  return `B${String(n).padStart(3, "0")}`;
+}
+
+function buildBookIdMap(items) {
+  const sorted = [...items].sort((a, b) => String(a.name).localeCompare(String(b.name)));
+  bookIdMap = new Map();
+  sorted.forEach((p, idx) => {
+    bookIdMap.set(p.id, formatBookId(idx + 1));
+  });
+  items.forEach((p) => {
+    p.book_id = bookIdMap.get(p.id) || "B000";
+  });
+  cart.forEach((c) => {
+    c.book_id = bookIdMap.get(c.product_id) || c.book_id || "B000";
+  });
+}
+
+function getBookId(productId) {
+  return bookIdMap.get(productId) || "B000";
+}
 
 async function requireAuth() {
   const { data, error } = await supabase.auth.getUser();
@@ -156,7 +179,14 @@ function addToCart(productId) {
     existing.qty += 1;
   } else {
     if (p.stock <= 0) return;
-    cart.push({ product_id: p.id, name: p.name, price: p.price, stock: p.stock, qty: 1 });
+    cart.push({
+      product_id: p.id,
+      book_id: getBookId(p.id),
+      name: p.name,
+      price: p.price,
+      stock: p.stock,
+      qty: 1,
+    });
   }
   renderCart();
 }
@@ -184,6 +214,7 @@ async function loadProducts() {
     }))
     .filter((p) => p.id);
 
+  buildBookIdMap(products);
   renderProducts();
 }
 
@@ -198,6 +229,7 @@ async function checkout() {
 
   const payload = cart.map((x) => ({ product_id: x.product_id, qty: x.qty }));
   const receiptItems = cart.map((x) => ({
+    bookId: x.book_id || getBookId(x.product_id),
     name: x.name,
     qty: x.qty,
     price: x.price,
@@ -279,15 +311,17 @@ function buildReceiptLines({ saleId, items, cashierEmail, receiptNo, createdAt }
     return left + " ".repeat(space) + right;
   };
 
-  const itemLine = (name, qty, amount) => {
+  const itemLine = (bookId, name, qty, amount) => {
     const col1 = pdfSafeText(name);
-    const nameWidth = 24;
+    const idWidth = 5;
+    const nameWidth = 20;
     const qtyWidth = 3;
     const amtWidth = 12;
+    const idCol = pdfSafeText(bookId || "B000").padEnd(idWidth);
     const nameCol = col1.length > nameWidth ? col1.slice(0, nameWidth - 3) + "..." : col1.padEnd(nameWidth);
     const qtyCol = String(qty).padStart(qtyWidth);
     const amtCol = pdfMoney(amount).padStart(amtWidth);
-    return `${nameCol} ${qtyCol} ${amtCol}`;
+    return `${idCol} ${nameCol} ${qtyCol} ${amtCol}`;
   };
 
   const lines = [];
@@ -302,10 +336,10 @@ function buildReceiptLines({ saleId, items, cashierEmail, receiptNo, createdAt }
   lines.push(labelValue("Payment", "CASH"));
   lines.push(labelValue("Status", "Completed"));
   lines.push(line);
-  const header = `${"Item".padEnd(24)} ${"Qty".padStart(3)} ${"Amount".padStart(12)}`;
+  const header = `${"ID".padEnd(5)} ${"Item".padEnd(20)} ${"Qty".padStart(3)} ${"Amount".padStart(12)}`;
   lines.push(header);
   items.forEach((i) => {
-    lines.push(itemLine(i.name, i.qty, i.price * i.qty));
+    lines.push(itemLine(i.bookId, i.name, i.qty, i.price * i.qty));
   });
   lines.push(line);
   lines.push(labelValue("Subtotal", pdfMoney(subtotal)));
@@ -411,6 +445,7 @@ function openReceipt({ saleId, items, cashierEmail }) {
     .map(
       (i) => `
       <tr>
+        <td>${escapeHtml(i.bookId || "B000")}</td>
         <td>${escapeHtml(i.name)}</td>
         <td>${i.qty}</td>
         <td>${peso(i.price * i.qty)}</td>
