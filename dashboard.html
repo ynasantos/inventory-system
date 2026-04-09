@@ -26,7 +26,7 @@
     #adminLink{display:none !important;}
     html.role-admin #adminLink{display:block !important;}
 
-    .btn{border:.5;border-radius:10px;padding:10px 14px;cursor:pointer;background:#D32F2F;color:#fff;font-weight:600}
+    .btn{border:.5;border-radius:10px;padding:10px 14px;cursor:pointer;background:#D32F2F;color:#D32F2F;font-weight:600}
     .btn-ghost{background:transparent;border:1px solid #374151;color:#cbd5e1;margin-top:10px}
     .sidebar-footer{margin-top:14px;font-size:12px;opacity:.85;line-height:1.4}
 
@@ -48,22 +48,50 @@
     .li-sub{font-size:12px;color:#6b7280;margin-top:4px}
     .badge{font-size:12px;font-weight:900;padding:6px 10px;border-radius:999px;background:#fee2e2;color:#991b1b}
 
-    /* Responsive adjustments */
-    @media (max-width: 1100px){.grid{grid-template-columns:repeat(6,1fr)}}
-    @media (max-width: 900px){.sidebar{width:200px}.main{padding:16px}}
+    /* Burger button */
+    .burger {
+      width: 34px;
+      height: 28px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      cursor: pointer;
+      background: none;
+      border: none;
+      padding: 0;
+    }
+    .burger span {
+      height: 4px;
+      width: 100%;
+      background: #D32F2F;
+      border-radius: 2px;
+      transition: 0.3s;
+    }
+
+    /* Close button inside sidebar */
+    .close-sidebar {
+      background: none;
+      border: none;
+      color: #fff;
+      font-size: 26px;
+      cursor: pointer;
+      align-self: flex-end;
+      margin-bottom: 10px;
+    }
+
+    /* Sidebar responsive behavior */
+    @media (max-width: 900px){
+      .sidebar{width:250px;position:fixed;left:-250px;top:0;height:100%;transition:left 0.3s ease;z-index:999}
+      .sidebar.show{left:0}
+      .main{padding:16px}
+    }
     @media (max-width: 720px){
-      .app{flex-direction:column}
-      .sidebar{width:100%;flex-direction:row;justify-content:space-between;align-items:center;padding:10px}
-      .nav{display:none}
-      .sidebar.active .nav{display:block;width:100%;margin-top:10px}
-      .main{padding:12px}
       .grid{grid-template-columns:1fr}
       .card{margin-bottom:12px}
       .page-title{font-size:20px}
       .page-sub{font-size:12px}
     }
     @media (max-width: 480px){
-      .sidebar{flex-direction:column;align-items:flex-start}
       .brand-title{font-size:16px}
       .btn{width:100%;margin-top:8px}
     }
@@ -82,22 +110,29 @@
       }
     })();
 
-    // Sidebar toggle for mobile
     document.addEventListener("DOMContentLoaded", () => {
-      const toggleBtn = document.getElementById("menuToggle");
-      if (toggleBtn) {
-        toggleBtn.addEventListener("click", () => {
-          document.querySelector(".sidebar").classList.toggle("active");
-        });
-      }
+      const burgerBtn = document.getElementById("burgerBtn");
+      const sidebar = document.querySelector(".sidebar");
+      const closeSidebarBtn = document.getElementById("closeSidebarBtn");
+
+      burgerBtn.addEventListener("click", () => {
+        sidebar.classList.toggle("show");
+      });
+
+      closeSidebarBtn.addEventListener("click", () => {
+        sidebar.classList.remove("show");
+      });
     });
   </script>
-  <script type="module" src="./js/dashboard.js?v=1002"></script>
+  <script type="module" src="./js/dashboard.js?v=1003"></script>
 </head>
 
 <body>
   <div class="app">
     <aside class="sidebar">
+      <!-- Close button for mobile -->
+      <button id="closeSidebarBtn" class="close-sidebar">&times;</button>
+
       <div class="brand">
         <div class="logo">
           <img src="./images/Kairos Logo.png" alt="Kairos System Logo">
@@ -107,9 +142,6 @@
           <div class="brand-sub">Publishing House</div>
         </div>
       </div>
-
-      <!-- Mobile menu toggle -->
-      <button id="menuToggle" class="btn">☰</button>
 
       <nav class="nav">
         <a class="active" href="./dashboard.html">Dashboard</a>
@@ -135,6 +167,13 @@
           <div class="page-title">Dashboard</div>
           <div class="page-sub">Overview of inventory and sales</div>
         </div>
+
+        <!-- Burger button -->
+        <button id="burgerBtn" class="burger">
+          <span></span>
+          <span></span>
+          <span></span>
+        </button>
       </header>
 
       <section class="grid">
