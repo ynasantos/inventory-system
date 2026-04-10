@@ -81,6 +81,43 @@
       .sidebar{width:200px}
       .main{padding:16px}
     }
+     /* Burger button */
+    .burger {
+      width: 34px;
+      height: 28px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      cursor: pointer;
+      background: none;
+      border: none;
+      padding: 0;
+    }
+    .burger span {
+      height: 4px;
+      width: 100%;
+      background: #2e8b57;
+      border-radius: 2px;
+      transition: 0.3s;
+    }
+
+    /* Close button inside sidebar */
+    .close-sidebar {
+      background: none;
+      border: none;
+      color: #fff;
+      font-size: 26px;
+      cursor: pointer;
+      align-self: flex-end;
+      margin-bottom: 10px;
+    }
+
+    /* Sidebar responsive behavior */
+    @media (max-width: 900px){
+      .sidebar{width:250px;position:fixed;left:-250px;top:0;height:100%;transition:left 0.3s ease;z-index:999}
+      .sidebar.show{left:0}
+      .main{padding:16px}
+    }
   </style>
 
   <script>
@@ -101,6 +138,7 @@
 <body>
   <div class="app">
     <aside class="sidebar">
+      <button id="closeSidebarBtn" class="close-sidebar">&times;</button>
       <div class="brand">
         <div class="logo">
           <img src="./images/Kairos Logo.png" alt="Kairo System Logo">
@@ -140,6 +178,12 @@
           <input id="search" placeholder="Search product..." style="min-width:240px;" />
           <button class="btn" id="clearBtn" type="button">Clear</button>
           <button class="btn" id="refreshBtn">Refresh</button>
+                    <!-- Burger button -->
+          <button id="burgerBtn" class="burger">
+            <span></span>
+            <span></span>
+            <span></span>
+          </button>
         </div>
       </header>
 
@@ -170,5 +214,18 @@
       </div>
     </main>
   </div>
+  <script>
+    const burgerBtn = document.getElementById("burgerBtn");
+    const sidebar = document.querySelector(".sidebar");
+    const closeSidebarBtn = document.getElementById("closeSidebarBtn");
+
+    burgerBtn.addEventListener("click", () => {
+      sidebar.classList.toggle("show");
+    });
+
+    closeSidebarBtn.addEventListener("click", () => {
+      sidebar.classList.remove("show");
+    });
+</script>
 </body>
 </html>
