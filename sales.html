@@ -128,6 +128,43 @@
       .grid{grid-template-columns:1fr}
       .span-7,.span-5{grid-column:span 1}
     }
+        /* Burger button */
+    .burger {
+      width: 34px;
+      height: 28px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      cursor: pointer;
+      background: none;
+      border: none;
+      padding: 0;
+    }
+    .burger span {
+      height: 4px;
+      width: 100%;
+      background: #2e8b57;
+      border-radius: 2px;
+      transition: 0.3s;
+    }
+
+    /* Close button inside sidebar */
+    .close-sidebar {
+      background: none;
+      border: none;
+      color: #fff;
+      font-size: 26px;
+      cursor: pointer;
+      align-self: flex-end;
+      margin-bottom: 10px;
+    }
+
+    /* Sidebar responsive behavior */
+    @media (max-width: 900px){
+      .sidebar{width:250px;position:fixed;left:-250px;top:0;height:100%;transition:left 0.3s ease;z-index:999}
+      .sidebar.show{left:0}
+      .main{padding:16px}
+    }
   </style>
 
   <!-- ✅ bump version so GitHub Pages loads newest JS -->
@@ -149,6 +186,8 @@
 <body>
   <div class="app">
     <aside class="sidebar">
+      <!-- Close button for mobile -->
+      <button id="closeSidebarBtn" class="close-sidebar">&times;</button>
       <div class="brand">
         <div class="logo">
           <!-- ✅ cache-bust so logo updates -->
@@ -183,7 +222,13 @@
         <div>
           <div class="page-title">Sales</div>
           <div class="page-sub">Create a new sale and auto-deduct stock</div>
-        </div>
+          </div>
+          <!-- Burger button -->
+          <button id="burgerBtn" class="burger">
+            <span></span>
+            <span></span>
+            <span></span>
+          </button>
       </header>
 
       <section class="grid">
@@ -293,5 +338,18 @@
       </div>
     </div>
   </div>
+  <script>
+    const burgerBtn = document.getElementById("burgerBtn");
+    const sidebar = document.querySelector(".sidebar");
+    const closeSidebarBtn = document.getElementById("closeSidebarBtn");
+
+    burgerBtn.addEventListener("click", () => {
+      sidebar.classList.toggle("show");
+    });
+
+    closeSidebarBtn.addEventListener("click", () => {
+      sidebar.classList.remove("show");
+    });
+</script>
 </body>
 </html>
